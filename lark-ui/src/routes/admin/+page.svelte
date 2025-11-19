@@ -96,11 +96,12 @@ const toSubmissionDraft = (submission: AdminSubmission) => ({
 	approvedHours: submission.project.approvedHours !== null
 		? submission.project.approvedHours.toString()
 		: (submission.project.nowHackatimeHours !== null ? submission.project.nowHackatimeHours.toFixed(1) : ''),
-	hoursJustification: submission.hoursJustification ?? ''
+	hoursJustification: submission.hoursJustification ?? '',
+	sendEmailNotification: false
 });
 
 const buildSubmissionDrafts = (list: AdminSubmission[]) => {
-	const drafts: Record<number, { approvalStatus: string; approvedHours: string; hoursJustification: string }> = {};
+	const drafts: Record<number, { approvalStatus: string; approvedHours: string; hoursJustification: string; sendEmailNotification: boolean }> = {};
 	for (const submission of list) {
 		drafts[submission.submissionId] = toSubmissionDraft(submission);
 	}
@@ -189,7 +190,7 @@ let projectsLoading = $state(false);
 let usersLoading = $state(false);
 let metricsLoading = $state(false);
 
-let submissionDrafts = $state<Record<number, { approvalStatus: string; approvedHours: string; hoursJustification: string }>>(
+let submissionDrafts = $state<Record<number, { approvalStatus: string; approvedHours: string; hoursJustification: string; sendEmailNotification: boolean }>>(
 	buildSubmissionDrafts(data.submissions ?? [])
 );
 let submissionSaving = $state<Record<number, boolean>>({});
@@ -352,7 +353,7 @@ async function recalculateAllProjectsHours() {
 	}
 }
 
-	async function saveSubmission(submissionId: number) {
+	async function saveSubmission(submissionId: number, sendEmail?: boolean) {
 		const draft = submissionDrafts[submissionId];
 		if (!draft) {
 			return;
@@ -362,10 +363,14 @@ async function recalculateAllProjectsHours() {
 		submissionErrors = { ...submissionErrors, [submissionId]: '' };
 		submissionSuccess = { ...submissionSuccess, [submissionId]: '' };
 
+		// Use the sendEmail parameter if provided, otherwise use the toggle state
+		const shouldSendEmail = sendEmail !== undefined ? sendEmail : draft.sendEmailNotification;
+
 		const payload = {
 			approvalStatus: draft.approvalStatus,
 			approvedHours: draft.approvedHours === '' ? null : parseFloat(draft.approvedHours),
 			hoursJustification: draft.hoursJustification === '' ? null : draft.hoursJustification,
+			sendEmail: shouldSendEmail,
 		};
 
 		try {
@@ -438,7 +443,9 @@ async function recalculateAllProjectsHours() {
 			approvalStatus: 'rejected',
 			approvedHours: '0',
 		};
-		await saveSubmission(submissionId);
+		// Quick Deny always sends email if the toggle is on, or uses toggle state
+		const shouldSendEmail = submissionDrafts[submissionId].sendEmailNotification;
+		await saveSubmission(submissionId, shouldSendEmail);
 	}
 
 	async function recalculateSubmissionHours(submissionId: number, projectId: number) {
@@ -1149,6 +1156,17 @@ function normalizeUrl(url: string | null): string | null {
 												placeholder="Explain the approved hours..."
 												bind:value={submissionDrafts[submission.submissionId].hoursJustification}></textarea>
 										</div>
+									</div>
+
+									<div class="flex items-center gap-3 py-3">
+										<label class="flex items-center gap-2 cursor-pointer">
+											<input
+												type="checkbox"
+												class="w-4 h-4 rounded border-gray-700 bg-gray-800 text-purple-600 focus:ring-2 focus:ring-purple-500 focus:ring-offset-gray-900"
+												bind:checked={submissionDrafts[submission.submissionId].sendEmailNotification}
+											/>
+											<span class="text-sm font-medium text-gray-300">Send email notification on status change</span>
+										</label>
 									</div>
 
 									<div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

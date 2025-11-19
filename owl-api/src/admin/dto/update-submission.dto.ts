@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsNumber, IsEnum, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsEnum, MaxLength, IsBoolean } from 'class-validator';
 
 export class UpdateSubmissionDto {
   @IsNumber()
@@ -13,4 +13,8 @@ export class UpdateSubmissionDto {
   @IsEnum(['pending', 'approved', 'rejected'])
   @IsOptional()
   approvalStatus?: 'pending' | 'approved' | 'rejected';
+
+  @IsBoolean()
+  @IsOptional()
+  sendEmail?: boolean;
 }

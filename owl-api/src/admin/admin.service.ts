@@ -190,8 +190,8 @@ export class AdminService {
       }
     }
 
-    // Send email notification if approval status was updated
-    if (updateSubmissionDto.approvalStatus !== undefined) {
+    // Send email notification if approval status was updated and sendEmail is true (or undefined for backward compatibility)
+    if (updateSubmissionDto.approvalStatus !== undefined && updateSubmissionDto.sendEmail !== false) {
       try {
         await this.mailService.sendSubmissionReviewEmail(
           updatedSubmission.project.user.email,
