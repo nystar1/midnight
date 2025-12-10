@@ -261,7 +261,6 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    max-width: 100vh;
     overflow-x: auto;
   }
 
