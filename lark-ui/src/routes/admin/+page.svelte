@@ -41,6 +41,7 @@
 			nowHackatimeProjects: string[] | null;
 			approvedHours: number | null;
 			hoursJustification: string | null; // Admin's justification - synced to Airtable
+			isFraud: boolean;
 			user: AdminLightUser;
 		};
 	};
@@ -58,6 +59,7 @@
 		approvedHours: number | null;
 		hoursJustification: string | null; // Admin's justification - synced to Airtable
 		isLocked: boolean;
+		isFraud: boolean;
 		createdAt: string;
 		updatedAt: string;
 		user: AdminLightUser;
@@ -941,6 +943,25 @@ async function recalculateAllProjectsHours() {
 		}
 	}
 
+	async function toggleFraudFlag(projectId: number, currentValue: boolean) {
+		try {
+			const response = await fetch(`${apiUrl}/api/admin/projects/${projectId}/fraud-flag`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ isFraud: !currentValue }),
+			});
+
+			if (response.ok) {
+				await loadSubmissions();
+				await loadProjects();
+				await loadUsers();
+			}
+		} catch (err) {
+			console.error('Failed to toggle fraud flag:', err);
+		}
+	}
+
 	async function showSubmissionsTab() {
 		activeTab = 'submissions';
 		if (!submissionsLoaded && !submissionsLoading) {
@@ -1661,6 +1682,11 @@ function normalizeUrl(url: string | null): string | null {
 						{@const selectedSubmissionId = selectedSubmissionByProject[projectId] ?? projectSubmissions[0].submissionId}
 						{@const selectedSubmission = projectSubmissions.find((s: AdminSubmission) => s.submissionId === selectedSubmissionId) ?? projectSubmissions[0]}
 						<div id="submission-card-{projectId}" class="rounded-2xl border border-gray-700 bg-gray-900/70 backdrop-blur p-6 space-y-4">
+							{#if selectedSubmission.project.isFraud}
+								<div class="bg-red-600/20 border-2 border-red-500 rounded-lg p-3 mb-4">
+									<p class="text-red-300 font-bold text-center uppercase tracking-wide">⚠️ FRAUD FLAGGED</p>
+								</div>
+							{/if}
 								{#if projectSubmissions.length > 1}
 									<div class="mb-4 pb-4 border-b border-gray-700">
 										<h4 class="text-sm font-semibold uppercase tracking-wide text-gray-400 mb-3">Submissions ({projectSubmissions.length})</h4>
@@ -1763,6 +1789,18 @@ function normalizeUrl(url: string | null): string | null {
 											</div>
 											<div class="space-y-2">
 												<h4 class="text-sm font-semibold uppercase tracking-wide text-gray-400">Project Info</h4>
+												<div class="flex items-center gap-2 mb-2">
+													<button
+														class={`px-3 py-1 text-xs rounded border transition-colors ${
+															selectedSubmission.project.isFraud
+																? 'bg-red-600/20 border-red-500 text-red-300 hover:bg-red-600/30'
+																: 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+														}`}
+														onclick={() => toggleFraudFlag(selectedSubmission.project.projectId, selectedSubmission.project.isFraud)}
+													>
+														{selectedSubmission.project.isFraud ? '🚫 Fraud Flagged' : 'Flag as Fraud'}
+													</button>
+												</div>
 												<div class="flex items-center gap-2">
 													<p class="text-sm text-gray-300">
 														Hackatime hours: <span class="font-semibold text-purple-300">{formatHours(selectedSubmission.project.nowHackatimeHours)}</span>

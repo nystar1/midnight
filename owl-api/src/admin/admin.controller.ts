@@ -127,4 +127,14 @@ export class AdminController {
   async getReviewerLeaderboard() {
     return this.adminService.getReviewerLeaderboard();
   }
+
+  @Put('projects/:id/fraud-flag')
+  @UseGuards(RolesGuard)
+  @Roles(Role.Admin)
+  async toggleFraudFlag(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { isFraud: boolean },
+  ) {
+    return this.adminService.toggleFraudFlag(id, body.isFraud);
+  }
 }

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException, TooManyRequestsException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { MailService } from '../mail/mail.service';
 import { LoginDto } from './dto/login.dto';
@@ -27,7 +27,7 @@ export class AuthService {
     );
 
     if (sendAttemptCount > 10) {
-      throw new TooManyRequestsException('You are ratelimited. Please try again later.');
+      throw new HttpException('You are ratelimited. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const otp = this.generateOtp();
@@ -156,7 +156,7 @@ export class AuthService {
     );
 
     if (ipAttemptCount > 40) {
-      throw new TooManyRequestsException(rateLimitMessage);
+      throw new HttpException(rateLimitMessage, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const emailAttemptCount = await this.redisService.increment(
@@ -165,7 +165,7 @@ export class AuthService {
     );
 
     if (emailAttemptCount > 20) {
-      throw new TooManyRequestsException(rateLimitMessage);
+      throw new HttpException(rateLimitMessage, HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const session = await this.prisma.userSession.findFirst({

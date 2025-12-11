@@ -940,6 +940,28 @@ export class AdminService {
     return leaderboard;
   }
 
+  async toggleFraudFlag(projectId: number, isFraud: boolean) {
+    const project = await this.prisma.project.findUnique({
+      where: { projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const updatedProject = await this.prisma.project.update({
+      where: { projectId },
+      data: { isFraud },
+      select: {
+        projectId: true,
+        projectTitle: true,
+        isFraud: true,
+      },
+    });
+
+    return updatedProject;
+  }
+
   private async recalculateProjectInternal(
     project: {
       projectId: number;

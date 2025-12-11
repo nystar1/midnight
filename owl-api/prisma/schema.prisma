@@ -56,6 +56,7 @@ model Project {
   repoUrl            String?      @map("repo_url")
   screenshotUrl      String?      @map("screenshot_url")
   isLocked           Boolean      @default(false) @map("is_locked")
+  isFraud             Boolean      @default(false) @map("is_fraud")
   user               User         @relation(fields: [userId], references: [userId], onDelete: Cascade)
   submissions        Submission[]
   editRequests       EditRequest[]
