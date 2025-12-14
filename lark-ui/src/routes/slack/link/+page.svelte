@@ -41,7 +41,7 @@
 			if (response.ok && data.success) {
 				success = true;
 				setTimeout(() => {
-					goto('/app');
+					goto('/app/projects');
 				}, 2000);
 			} else {
 				error = data.message || 'Failed to link Slack account.';
