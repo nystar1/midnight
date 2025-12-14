@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { checkAuthStatus } from '$lib/auth';
+	import { env } from '$env/dynamic/public';
 	import Button from '$lib/Button.svelte';
 
 	let loading = $state(true);
@@ -28,7 +29,7 @@
 		}
 
 		try {
-			const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+			const apiUrl = env.PUBLIC_API_URL || '';
 			const response = await fetch(`${apiUrl}/api/user/slack/link`, {
 				method: 'POST',
 				credentials: 'include',
