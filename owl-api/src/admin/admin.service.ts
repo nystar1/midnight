@@ -69,7 +69,7 @@ export class AdminService {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: 'asc' },
     });
 
     return submissions;

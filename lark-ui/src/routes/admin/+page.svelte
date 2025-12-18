@@ -214,10 +214,10 @@ let shopLoaded = $state(false);
 let initialLoadDone = $state(false);
 
 let searchQuery = $state('');
-let selectedStatuses = $state<Set<string>>(new Set());
+let selectedStatuses = $state<Set<string>>(new Set(['pending']));
 let selectedProjectTypes = $state<Set<string>>(new Set());
 let sortField = $state<SortField>('createdAt');
-let sortDirection = $state<SortDirection>('desc');
+let sortDirection = $state<SortDirection>('asc');
 
 function getDefaultDateRange() {
 	const today = new Date();
@@ -389,62 +389,86 @@ function formatCount(value: number) {
 	return value.toLocaleString();
 }
 
+	let submissionsLoadPromise: Promise<void> | null = null;
 	async function loadSubmissions(autoRecalculate = false) {
+		if (submissionsLoading && submissionsLoadPromise) {
+			return submissionsLoadPromise;
+		}
 		submissionsLoading = true;
-		try {
-			const response = await fetch(`${apiUrl}/api/admin/submissions`, {
-				credentials: 'include',
-			});
-			if (response.ok) {
-			const next: AdminSubmission[] = await response.json();
-			submissions = next;
-			submissionDrafts = buildSubmissionDrafts(next);
-				submissionErrors = {};
-				submissionSuccess = {};
-				submissionsLoaded = true;
+		submissionsLoadPromise = (async () => {
+			try {
+				const response = await fetch(`${apiUrl}/api/admin/submissions`, {
+					credentials: 'include',
+				});
+				if (response.ok) {
+					const next: AdminSubmission[] = await response.json();
+					submissions = next;
+					submissionDrafts = buildSubmissionDrafts(next);
+					submissionErrors = {};
+					submissionSuccess = {};
+					submissionsLoaded = true;
 
-				if (autoRecalculate) {
-					const pendingSubmissions = next.filter(s => s.approvalStatus === 'pending');
-					for (const submission of pendingSubmissions) {
-						recalculateSubmissionHours(submission.submissionId, submission.project.projectId);
+					if (autoRecalculate) {
+						const pendingSubmissions = next.filter(s => s.approvalStatus === 'pending');
+						for (const submission of pendingSubmissions) {
+							recalculateSubmissionHours(submission.submissionId, submission.project.projectId);
+						}
 					}
 				}
+			} finally {
+				submissionsLoading = false;
+				submissionsLoadPromise = null;
 			}
-		} finally {
-			submissionsLoading = false;
-		}
+		})();
+		return submissionsLoadPromise;
 	}
 
+	let projectsLoadPromise: Promise<void> | null = null;
 	async function loadProjects() {
-		projectsLoading = true;
-		try {
-			const response = await fetch(`${apiUrl}/api/admin/projects`, {
-				credentials: 'include',
-			});
-			if (response.ok) {
-				projects = await response.json();
-				projectErrors = {};
-				projectSuccess = {};
-				projectsLoaded = true;
-			}
-		} finally {
-			projectsLoading = false;
+		if (projectsLoading && projectsLoadPromise) {
+			return projectsLoadPromise;
 		}
+		projectsLoading = true;
+		projectsLoadPromise = (async () => {
+			try {
+				const response = await fetch(`${apiUrl}/api/admin/projects`, {
+					credentials: 'include',
+				});
+				if (response.ok) {
+					projects = await response.json();
+					projectErrors = {};
+					projectSuccess = {};
+					projectsLoaded = true;
+				}
+			} finally {
+				projectsLoading = false;
+				projectsLoadPromise = null;
+			}
+		})();
+		return projectsLoadPromise;
 	}
 
+	let usersLoadPromise: Promise<void> | null = null;
 	async function loadUsers() {
-		usersLoading = true;
-		try {
-			const response = await fetch(`${apiUrl}/api/admin/users`, {
-				credentials: 'include',
-			});
-			if (response.ok) {
-				users = await response.json();
-				usersLoaded = true;
-			}
-		} finally {
-			usersLoading = false;
+		if (usersLoading && usersLoadPromise) {
+			return usersLoadPromise;
 		}
+		usersLoading = true;
+		usersLoadPromise = (async () => {
+			try {
+				const response = await fetch(`${apiUrl}/api/admin/users`, {
+					credentials: 'include',
+				});
+				if (response.ok) {
+					users = await response.json();
+					usersLoaded = true;
+				}
+			} finally {
+				usersLoading = false;
+				usersLoadPromise = null;
+			}
+		})();
+		return usersLoadPromise;
 	}
 
 	let slackEditingUserId = $state<number | null>(null);
@@ -819,10 +843,12 @@ async function recalculateAllProjectsHours() {
 		const updatedCount = typeof body?.updated === 'number' ? body.updated : 0;
 		bulkProjectMessage = `Recalculated ${updatedCount} project${updatedCount === 1 ? '' : 's'}.`;
 
-		await loadProjects();
-		await loadSubmissions();
-		await loadUsers();
-		await loadMetrics();
+		await Promise.all([
+			loadProjects(),
+			loadSubmissions(),
+			loadUsers(),
+			loadMetrics()
+		]);
 	} catch (err) {
 		bulkProjectError = err instanceof Error ? err.message : 'Failed to recalculate projects';
 	} finally {
@@ -866,8 +892,12 @@ async function recalculateAllProjectsHours() {
 			}
 
 			submissionSuccess = { ...submissionSuccess, [submissionId]: 'Submission updated' };
-			await loadSubmissions();
-			await loadProjects();
+			if (activeTab === 'submissions') {
+				await loadSubmissions();
+			}
+			if (activeTab === 'projects') {
+				await loadProjects();
+			}
 			await loadMetrics();
 		} catch (err) {
 			submissionErrors = {
@@ -906,8 +936,12 @@ async function recalculateAllProjectsHours() {
 			submissionSuccess = { ...submissionSuccess, [submission.submissionId]: 'Submission quick approved and synced to Airtable' };
 			
 			const currentSubmissionId = submission.submissionId;
-			await loadSubmissions();
-			await loadProjects();
+			if (activeTab === 'submissions') {
+				await loadSubmissions();
+			}
+			if (activeTab === 'projects') {
+				await loadProjects();
+			}
 			await loadMetrics();
 			
 			advanceToNextSubmission(currentSubmissionId);
@@ -943,13 +977,17 @@ async function recalculateAllProjectsHours() {
 			});
 
 			if (response.ok) {
-				await loadSubmissions();
-				const updatedSubmission = submissions.find(s => s.submissionId === submissionId);
-				if (updatedSubmission) {
-					submissionDrafts[submissionId] = {
-						...submissionDrafts[submissionId],
-						approvedHours: updatedSubmission.project.nowHackatimeHours?.toFixed(1) ?? ''
-					};
+				const responseData = await response.json();
+				const updatedProject = responseData?.project;
+				if (updatedProject) {
+					const submission = submissions.find(s => s.submissionId === submissionId);
+					if (submission) {
+						submission.project.nowHackatimeHours = updatedProject.nowHackatimeHours;
+						submissionDrafts[submissionId] = {
+							...submissionDrafts[submissionId],
+							approvedHours: updatedProject.nowHackatimeHours?.toFixed(1) ?? ''
+						};
+					}
 				}
 			}
 		} catch (err) {
@@ -977,9 +1015,11 @@ async function recalculateAllProjectsHours() {
 			}
 
 			projectSuccess = { ...projectSuccess, [projectId]: 'Hours recalculated' };
-			await loadProjects();
-			await loadSubmissions();
-			await loadUsers();
+			await Promise.all([
+				activeTab === 'projects' ? loadProjects() : Promise.resolve(),
+				activeTab === 'submissions' ? loadSubmissions() : Promise.resolve(),
+				activeTab === 'users' ? loadUsers() : Promise.resolve()
+			]);
 			await loadMetrics();
 		} catch (err) {
 			projectErrors = {
@@ -1014,9 +1054,11 @@ async function recalculateAllProjectsHours() {
 			}
 
 			projectSuccess = { ...projectSuccess, [projectId]: 'Project removed' };
-			await loadProjects();
-			await loadSubmissions();
-			await loadUsers();
+			await Promise.all([
+				activeTab === 'projects' ? loadProjects() : Promise.resolve(),
+				activeTab === 'submissions' ? loadSubmissions() : Promise.resolve(),
+				activeTab === 'users' ? loadUsers() : Promise.resolve()
+			]);
 			await loadMetrics();
 		} catch (err) {
 			projectErrors = {
@@ -1038,9 +1080,11 @@ async function recalculateAllProjectsHours() {
 			});
 
 			if (response.ok) {
-				await loadSubmissions();
-				await loadProjects();
-				await loadUsers();
+				await Promise.all([
+					activeTab === 'submissions' ? loadSubmissions() : Promise.resolve(),
+					activeTab === 'projects' ? loadProjects() : Promise.resolve(),
+					activeTab === 'users' ? loadUsers() : Promise.resolve()
+				]);
 			}
 		} catch (err) {
 			console.error('Failed to toggle fraud flag:', err);
@@ -1057,9 +1101,11 @@ async function recalculateAllProjectsHours() {
 			});
 
 			if (response.ok) {
-				await loadSubmissions();
-				await loadProjects();
-				await loadUsers();
+				await Promise.all([
+					activeTab === 'submissions' ? loadSubmissions() : Promise.resolve(),
+					activeTab === 'projects' ? loadProjects() : Promise.resolve(),
+					activeTab === 'users' ? loadUsers() : Promise.resolve()
+				]);
 			}
 		} catch (err) {
 			console.error('Failed to toggle sus flag:', err);
@@ -1067,13 +1113,15 @@ async function recalculateAllProjectsHours() {
 	}
 
 	async function showSubmissionsTab() {
+		if (activeTab === 'submissions') return;
 		activeTab = 'submissions';
 		if (!submissionsLoaded && !submissionsLoading) {
-			await loadSubmissions(true);
+			await loadSubmissions(false);
 		}
 	}
 
 	async function showProjectsTab() {
+		if (activeTab === 'projects') return;
 		activeTab = 'projects';
 		if (!projectsLoaded && !projectsLoading) {
 			await loadProjects();
@@ -1081,6 +1129,7 @@ async function recalculateAllProjectsHours() {
 	}
 
 	async function showUsersTab() {
+		if (activeTab === 'users') return;
 		activeTab = 'users';
 		if (!usersLoaded && !usersLoading) {
 			await loadUsers();
@@ -1263,7 +1312,9 @@ async function recalculateAllProjectsHours() {
 $effect(() => {
 	if (!initialLoadDone && typeof window !== 'undefined') {
 		initialLoadDone = true;
-		loadSubmissions(true);
+		if (activeTab === 'submissions') {
+			loadSubmissions(false);
+		}
 	}
 });
 
@@ -1414,6 +1465,15 @@ let filteredGroupedSubmissions = $derived.by(() => {
 	return filtered;
 });
 
+let sortedGroupedSubmissionsEntries = $derived.by(() => {
+	const entries = Object.entries(filteredGroupedSubmissions);
+	return entries.sort(([projectIdA, submissionsA], [projectIdB, submissionsB]) => {
+		const firstSubmissionA = submissionsA[0];
+		const firstSubmissionB = submissionsB[0];
+		return compareSubmissions(firstSubmissionA, firstSubmissionB);
+	});
+});
+
 let filteredSubmissions = $derived(
 	submissions
 		.filter((s) => matchesSearch(s, searchQuery))
@@ -1469,8 +1529,8 @@ function normalizeUrl(url: string | null): string | null {
 	<title>Admin Panel - Midnight</title>
 </svelte:head>
 
-<div class="min-h-screen bg-gray-950 text-white p-6">
-	<div class="max-w-7xl mx-auto space-y-8">
+<div class="min-h-screen bg-gray-950 text-white p-4 md:p-6 overflow-x-hidden">
+	<div class="max-w-7xl mx-auto space-y-8 w-full">
 		<header class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
 			<div>
 				<h1 class="text-4xl font-bold">Admin Panel</h1>
@@ -1838,11 +1898,11 @@ function normalizeUrl(url: string | null): string | null {
 					</div>
 				{:else}
 					<div class="grid gap-6">
-					{#each Object.entries(filteredGroupedSubmissions) as [projectIdStr, projectSubmissions]}
+					{#each sortedGroupedSubmissionsEntries as [projectIdStr, projectSubmissions]}
 						{@const projectId = Number(projectIdStr)}
 						{@const selectedSubmissionId = selectedSubmissionByProject[projectId] ?? projectSubmissions[0].submissionId}
 						{@const selectedSubmission = projectSubmissions.find((s: AdminSubmission) => s.submissionId === selectedSubmissionId) ?? projectSubmissions[0]}
-						<div id="submission-card-{projectId}" class={`rounded-2xl border bg-gray-900/70 backdrop-blur p-6 space-y-4 ${
+						<div id="submission-card-{projectId}" class={`rounded-2xl border bg-gray-900/70 backdrop-blur p-4 md:p-6 space-y-4 min-w-0 max-w-full overflow-hidden ${
 							selectedSubmission.project.user.isSus
 								? 'border-yellow-500'
 								: selectedSubmission.project.isFraud
@@ -1899,13 +1959,15 @@ function normalizeUrl(url: string | null): string | null {
 												<img 
 													src={selectedSubmission.screenshotUrl || selectedSubmission.project.screenshotUrl} 
 													alt="Project screenshot" 
+													loading="lazy"
+													decoding="async"
 													class="w-full h-48 object-cover rounded-lg border border-gray-700 hover:border-purple-500 transition-colors cursor-pointer"
 												/>
 											</a>
 										</div>
 									{/if}
 
-									<div class="flex-1 space-y-4">
+									<div class="flex-1 space-y-4 min-w-0">
 										<div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
 											<div>
 												<h3 class="text-2xl font-semibold">{selectedSubmission.project.projectTitle}</h3>
@@ -2022,21 +2084,21 @@ function normalizeUrl(url: string | null): string | null {
 										{#if selectedSubmission.description || selectedSubmission.project.description}
 											<div class="space-y-2">
 												<h4 class="text-sm font-semibold uppercase tracking-wide text-gray-400">Description</h4>
-												<p class="text-sm text-gray-300">{selectedSubmission.description || selectedSubmission.project.description}</p>
+												<p class="text-sm text-gray-300 break-words">{selectedSubmission.description || selectedSubmission.project.description}</p>
 											</div>
 										{/if}
 
 										{#if selectedSubmission.hoursJustification}
 											<div class="space-y-2 bg-blue-950/30 border border-blue-800 rounded-lg p-4">
 												<h4 class="text-sm font-semibold uppercase tracking-wide text-blue-300">User Feedback</h4>
-												<p class="text-sm text-gray-300">{selectedSubmission.hoursJustification}</p>
+												<p class="text-sm text-gray-300 break-words">{selectedSubmission.hoursJustification}</p>
 											</div>
 										{/if}
 
 										{#if selectedSubmission.project.hoursJustification}
 											<div class="space-y-2 bg-purple-950/30 border border-purple-800 rounded-lg p-4">
 												<h4 class="text-sm font-semibold uppercase tracking-wide text-purple-300">Hours Justification (Admin Only)</h4>
-												<p class="text-sm text-gray-300">{selectedSubmission.project.hoursJustification}</p>
+												<p class="text-sm text-gray-300 break-words">{selectedSubmission.project.hoursJustification}</p>
 											</div>
 										{/if}
 
@@ -2136,7 +2198,7 @@ function normalizeUrl(url: string | null): string | null {
 											<label class="text-sm font-medium text-gray-300" for={userFeedbackIdFor(selectedSubmission.submissionId)}>User Feedback (sent via email)</label>
 											<textarea
 												id={userFeedbackIdFor(selectedSubmission.submissionId)}
-												class="w-full rounded-lg border border-blue-600 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+												class="w-full min-w-0 rounded-lg border border-blue-600 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
 												rows="2"
 												placeholder="Feedback to send to the user..."
 												bind:value={submissionDrafts[selectedSubmission.submissionId].userFeedback}></textarea>
@@ -2145,7 +2207,7 @@ function normalizeUrl(url: string | null): string | null {
 											<label class="text-sm font-medium text-gray-300" for={justificationIdFor(selectedSubmission.submissionId)}>Hours Justification (admin only, synced to Airtable)</label>
 											<textarea
 												id={justificationIdFor(selectedSubmission.submissionId)}
-												class="w-full rounded-lg border border-purple-600 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+												class="w-full min-w-0 rounded-lg border border-purple-600 bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-y"
 												rows="2"
 												placeholder="Internal justification for Airtable..."
 												bind:value={submissionDrafts[selectedSubmission.submissionId].hoursJustification}></textarea>
@@ -2968,6 +3030,11 @@ function normalizeUrl(url: string | null): string | null {
 	:global(body) {
 		margin: 0;
 		padding: 0;
+		overflow-x: hidden;
+	}
+	
+	:global(html) {
+		overflow-x: hidden;
 	}
 </style>
 
